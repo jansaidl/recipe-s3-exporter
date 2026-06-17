@@ -1,0 +1,40 @@
+#yamlPreprocessor=on
+# HA Production: horizontally scaled app, HA PostgreSQL, one bucket.
+#   zerops project import "2 — HA Production/import.yaml"
+project:
+  name: s3-exporter
+  description: Dashboard for exporting Zerops service backups to external S3 storage
+  tags:
+    - backup
+    - exporter
+
+services:
+  # The dashboard application (Go), built from this repository.
+  - hostname: app
+    type: go@1
+    zeropsSetup: app
+    buildFromGit: https://github.com/jansaidl/recipe-s3-exporter
+    enableSubdomainAccess: true
+    minContainers: 2
+    maxContainers: 4
+    envVariables:
+      # More workers for higher export throughput across containers.
+      EXPORT_WORKERS: "4"
+    envSecrets:
+      # 32-character master key encrypting all stored secrets at rest (generated).
+      MASTER_KEY: <@generateRandomString(<32>)>
+      # First admin account, created on first boot. ADMIN_EMAIL is required and
+      # prompted on deploy; the password is generated — read it from this
+      # service's environment variables afterwards.
+      ADMIN_EMAIL:
+      ADMIN_PASSWORD: <@generateRandomString(<16>)>
+
+  # Highly available PostgreSQL for users, tokens, targets, jobs and run history.
+  - hostname: db
+    type: postgresql@16
+    mode: HA
+
+  # A Zerops Object Storage bucket you can use as an export target.
+  - hostname: storage
+    type: object-storage
+    objectStorageSize: 10

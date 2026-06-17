@@ -37,19 +37,15 @@ master key supplied via the environment.
 
 ## Run locally
 
-Requires Go 1.24+, a PostgreSQL instance, and (for styling) the Tailwind CLI.
+Requires Go 1.24+, a running PostgreSQL instance, and (for styling) the Tailwind CLI.
 
 ```bash
-# 1. Start Postgres (example with Docker)
-docker run -d --name exporter-pg -e POSTGRES_PASSWORD=secret \
-  -e POSTGRES_DB=exporter -p 5432:5432 postgres:16-alpine
-
-# 2. Configure
+# 1. Configure (point DATABASE_URL at your PostgreSQL instance)
 cp .env.example .env
 export $(grep -v '^#' .env | xargs)
 export MASTER_KEY="$(openssl rand -base64 32)"
 
-# 3. Generate templates + CSS, then run
+# 2. Generate templates + CSS, then run
 templ generate
 tailwindcss -c tailwind.config.js \
   -i internal/web/static/css/input.css \
@@ -82,18 +78,34 @@ Open http://localhost:8080 and sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 
 ## Deploy to Zerops
 
-Import the recipe:
+This repository is a [Zerops recipe](https://docs.zerops.io/references/import).
+The recipe metadata and import definitions live under `.zerops-recipe/`:
 
-```bash
-zerops project import zerops-import.yml
+```
+.zerops-recipe/
+  README.md                     recipe page content (fragments)
+  1 — Small Production/
+    import.yaml                 single app container, NON_HA PostgreSQL
+    README.md
+  2 — HA Production/
+    import.yaml                 app autoscaling 2–4, HA PostgreSQL
+    README.md
+zerops.yml                      build & run config for the app (buildFromGit target)
 ```
 
-This creates three services:
+Deploy from the Zerops recipe page, or import an environment via the CLI:
+
+```bash
+zerops project import ".zerops-recipe/1 — Small Production/import.yaml"
+```
+
+Each environment creates three services:
 
 - **app** — this dashboard (built via [`zerops.yml`](./zerops.yml)); `MASTER_KEY`
-  and `ADMIN_PASSWORD` are generated automatically as secrets. Edit
-  `buildFromGit` to point at your repository, or remove it and `zerops push`.
-- **db** — PostgreSQL 16; `DATABASE_URL` is wired from `${db_*}` env vars.
+  and `ADMIN_PASSWORD` are generated automatically, and `ADMIN_EMAIL` is prompted
+  on deploy. Update `buildFromGit` in the `import.yaml` files to point at your fork.
+- **db** — PostgreSQL 16 (NON_HA or HA per environment); `DATABASE_URL` is wired
+  from the `${db_*}` env vars in `zerops.yml`.
 - **storage** — a Zerops Object Storage bucket you can use as an export target,
   via `${storage_apiUrl}`, `${storage_accessKeyId}`, `${storage_secretAccessKey}`,
   `${storage_bucketName}`.
