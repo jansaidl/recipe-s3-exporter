@@ -16,14 +16,14 @@ services:
     buildFromGit: https://github.com/jansaidl/recipe-s3-exporter
     enableSubdomainAccess: true
     minContainers: 1
-    maxContainers: 2
+    maxContainers: 1
     envSecrets:
       # 32-character master key encrypting all stored secrets at rest (generated).
       MASTER_KEY: <@generateRandomString(<32>)>
       # First admin account, created on first boot. ADMIN_EMAIL is required and
       # prompted on deploy; the password is generated — read it from this
       # service's environment variables afterwards.
-      ADMIN_EMAIL:
+      ADMIN_EMAIL: admin@example.com
       ADMIN_PASSWORD: <@generateRandomString(<16>)>
 
   # PostgreSQL database for users, tokens, targets, jobs and run history.
