@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,22 +17,44 @@ import (
 // DefaultAPI is the Zerops public REST API base URL.
 const DefaultAPI = "https://api.app-prg1.zerops.io/api/rest/public"
 
+// DefaultAuthScheme is the Authorization scheme used per the Zerops OpenAPI
+// spec (Bearer with an opaque token).
+const DefaultAuthScheme = "Bearer"
+
 // Client talks to the Zerops API with a single integration/access token.
 type Client struct {
-	base  string
-	token string
-	http  *http.Client
+	base   string
+	token  string
+	scheme string
+	http   *http.Client
 }
 
-// New builds a client. If base is empty, DefaultAPI is used.
-func New(base, token string) *Client {
+// New builds a client. If base is empty, DefaultAPI is used. An optional auth
+// scheme overrides the default "Bearer"; pass "" (or "none"/"raw") to send the
+// raw token in the Authorization header with no scheme prefix.
+func New(base, token string, scheme ...string) *Client {
 	if base == "" {
 		base = DefaultAPI
 	}
+	s := DefaultAuthScheme
+	if len(scheme) > 0 {
+		s = strings.TrimSpace(scheme[0])
+	}
 	return &Client{
-		base:  strings.TrimRight(base, "/"),
-		token: token,
-		http:  &http.Client{Timeout: 60 * time.Second},
+		base:   strings.TrimRight(base, "/"),
+		token:  token,
+		scheme: s,
+		http:   &http.Client{Timeout: 60 * time.Second},
+	}
+}
+
+// authHeader builds the Authorization header value for the configured scheme.
+func (c *Client) authHeader() string {
+	switch strings.ToLower(c.scheme) {
+	case "", "none", "raw":
+		return c.token
+	default:
+		return c.scheme + " " + c.token
 	}
 }
 
@@ -153,23 +176,50 @@ func (c *Client) CreateDownloadURL(ctx context.Context, serviceStackID, backupNa
 }
 
 // Download opens the backup byte stream from a temporary download URL. The
-// caller must close the returned ReadCloser.
+// caller must close the returned ReadCloser. The returned int64 is the
+// response Content-Length (-1 if unknown). The download URL is a presigned
+// object-storage link, so no Authorization header is sent.
 func (c *Client) Download(ctx context.Context, downloadURL string) (io.ReadCloser, int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
+	log.Printf("[zerops] -> GET (download) %s", sanitizeURL(downloadURL))
+	start := time.Now()
 	// Long-lived stream; use a client without the short API timeout.
 	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
+		log.Printf("[zerops] !! download transport error after %s: %v", time.Since(start).Round(time.Millisecond), err)
 		return nil, 0, err
 	}
+	finalURL := downloadURL
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
+	}
+	log.Printf("[zerops] <- download %s CL=%d type=%q encoding=%q final=%s",
+		resp.Status, resp.ContentLength, resp.Header.Get("Content-Type"),
+		resp.Header.Get("Content-Encoding"), sanitizeURL(finalURL))
 	if resp.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		resp.Body.Close()
+		log.Printf("[zerops] !! download error body: %s", truncate(string(body), 500))
 		return nil, 0, fmt.Errorf("download failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 	return resp.Body, resp.ContentLength, nil
+}
+
+// sanitizeURL strips the query string (which may carry presigned credentials)
+// for safe logging, keeping scheme+host+path.
+func sanitizeURL(raw string) string {
+	if u, err := url.Parse(raw); err == nil {
+		u.RawQuery = ""
+		u.Fragment = ""
+		return u.String()
+	}
+	if i := strings.IndexByte(raw, '?'); i >= 0 {
+		return raw[:i]
+	}
+	return raw
 }
 
 // parseMetadata extracts known fields from the freeform backup metadata map.
@@ -208,27 +258,49 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, ou
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", c.authHeader())
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	log.Printf("[zerops] -> %s %s (auth scheme=%q, token=%s)", method, path, c.scheme, maskToken(c.token))
+	start := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		log.Printf("[zerops] !! %s %s transport error after %s: %v", method, path, time.Since(start).Round(time.Millisecond), err)
+		return fmt.Errorf("zerops request %s %s failed: %w", method, path, err)
 	}
 	defer resp.Body.Close()
 
 	data, _ := io.ReadAll(resp.Body)
+	log.Printf("[zerops] <- %s %s %s (%s, %d bytes)", method, path, resp.Status, time.Since(start).Round(time.Millisecond), len(data))
 	if resp.StatusCode/100 != 2 {
+		log.Printf("[zerops] !! %s %s error body: %s", method, path, truncate(string(data), 500))
 		return fmt.Errorf("zerops api %s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(data)))
 	}
 	if out == nil {
 		return nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
+		log.Printf("[zerops] !! %s %s decode error: %v; body: %s", method, path, err, truncate(string(data), 500))
 		return fmt.Errorf("decode response from %s: %w", path, err)
 	}
 	return nil
+}
+
+// maskToken returns a token preview safe for logs (first/last few chars).
+func maskToken(t string) string {
+	if len(t) <= 8 {
+		return "****"
+	}
+	return t[:4] + "…" + t[len(t)-4:]
+}
+
+func truncate(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) > n {
+		return s[:n] + "…(truncated)"
+	}
+	return s
 }

@@ -31,7 +31,7 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate against the Zerops API before storing.
-	clientID, err := zerops.New(s.cfg.ZeropsAPI, token).Validate(r.Context())
+	clientID, err := zerops.New(s.cfg.ZeropsAPI, token, s.cfg.ZeropsAuthScheme).Validate(r.Context())
 	if err != nil {
 		s.setFlash(r, "Token validation failed: "+err.Error())
 		http.Redirect(w, r, "/tokens", http.StatusSeeOther)

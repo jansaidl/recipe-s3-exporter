@@ -41,6 +41,8 @@ func NewServer(cfg *config.Config, store *db.DB, cipher *crypto.Cipher, a *auth.
 // Routes builds the chi router with the full middleware stack.
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(s.auth.SM.LoadAndSave)
 	r.Use(s.auth.LoadUser)

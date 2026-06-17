@@ -7,6 +7,13 @@ templ postButton(action, label, classes string) {
 	</form>
 }
 
+// InlineError renders an error message suitable for swapping into a cascade
+// field so failures (e.g. Zerops API errors) are visible in the UI.
+templ InlineError(label, msg string) {
+	<label class="mb-1 block text-sm font-medium text-slate-700">{ label }</label>
+	<div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{ msg }</div>
+}
+
 // deleteButton renders a destructive POST form guarded by a JS confirm.
 templ deleteButton(action string) {
 	<form method="post" action={ templ.SafeURL(action) } onsubmit="return confirm('Delete this item? This cannot be undone.');">

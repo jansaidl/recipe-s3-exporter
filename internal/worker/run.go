@@ -1,9 +1,12 @@
 package worker
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"sort"
+	"time"
 
 	"recipe-s3-exporter/internal/models"
 	"recipe-s3-exporter/internal/storage"
@@ -48,7 +51,7 @@ func (p *Pool) runExport(ctx context.Context, runID int64, job *models.ExportJob
 		p.fail(ctx, runID, 0, fmt.Sprintf("decrypt token: %v", err))
 		return nil
 	}
-	zc := zerops.New(p.zeropsAPI, plainToken)
+	zc := zerops.New(p.zeropsAPI, plainToken, p.authScheme)
 
 	// Find the latest backup matching the job's tag filter.
 	backups, err := zc.ListBackups(ctx, job.ServiceStackID)
@@ -80,29 +83,21 @@ func (p *Pool) runExport(ctx context.Context, runID int64, job *models.ExportJob
 		return fmt.Errorf("start run: %w", err)
 	}
 
-	// Request a temporary download URL and open the byte stream.
-	url, err := zc.CreateDownloadURL(ctx, job.ServiceStackID, backup.Name)
+	// Open a non-empty download stream, retrying with a fresh URL if the backup
+	// archive is not yet ready (empty body). Returns a buffered reader with the
+	// first byte already peeked, plus the counting reader for byte totals.
+	body, buffered, cr, err := p.openBackupStream(ctx, zc, runID, job.ServiceStackID, backup)
 	if err != nil {
-		p.fail(ctx, runID, 0, fmt.Sprintf("download url: %v", err))
-		return nil
-	}
-	body, contentLen, err := zc.Download(ctx, url)
-	if err != nil {
-		p.fail(ctx, runID, 0, fmt.Sprintf("download: %v", err))
+		p.fail(ctx, runID, 0, err.Error())
 		return nil
 	}
 	defer body.Close()
 
-	size := backup.Size
-	if size <= 0 {
-		size = contentLen // fall back to Content-Length if metadata size is absent
-	}
-
-	// Stream to S3 while persisting progress.
-	cr := newCountingReader(ctx, body, func(c context.Context, n int64) {
-		_ = p.db.UpdateRunProgress(c, runID, n)
-	})
-	if err := store.Upload(ctx, key, cr, size, "application/octet-stream"); err != nil {
+	// Stream to S3 with an unknown size (bounded-memory multipart). This is
+	// robust to any mismatch between the metadata size and the actual stream
+	// length.
+	p.logf("run %d: uploading %s (metadata size=%d) -> %s", runID, backup.Name, backup.Size, key)
+	if err := store.Upload(ctx, key, buffered, -1, "application/octet-stream"); err != nil {
 		p.fail(ctx, runID, cr.total, fmt.Sprintf("upload: %v", err))
 		return nil
 	}
@@ -112,6 +107,54 @@ func (p *Pool) runExport(ctx context.Context, runID int64, job *models.ExportJob
 	}
 	p.logf("run %d (job %q): exported %s (%d bytes) -> %s", runID, job.Name, backup.Name, cr.total, key)
 	return nil
+}
+
+// openBackupStream requests a download URL and opens the byte stream, retrying
+// with a fresh URL when the response is empty (the backup archive may not be
+// ready immediately). It returns the underlying body (for the caller to close),
+// a buffered reader with the first byte already verified, and the counting
+// reader tracking transferred bytes.
+func (p *Pool) openBackupStream(ctx context.Context, zc *zerops.Client, runID int64, serviceStackID string, backup *zerops.Backup) (io.ReadCloser, *bufio.Reader, *countingReader, error) {
+	const maxAttempts = 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		url, err := zc.CreateDownloadURL(ctx, serviceStackID, backup.Name)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("download url: %w", err)
+		}
+
+		body, contentLen, err := zc.Download(ctx, url)
+		if err != nil {
+			lastErr = fmt.Errorf("download: %w", err)
+			p.logf("run %d: download attempt %d/%d failed: %v", runID, attempt, maxAttempts, err)
+		} else {
+			cr := newCountingReader(ctx, body, func(c context.Context, n int64) {
+				_ = p.db.UpdateRunProgress(c, runID, n)
+			})
+			buffered := bufio.NewReaderSize(cr, 64*1024)
+			if _, perr := buffered.Peek(1); perr == nil {
+				p.logf("run %d: download ready on attempt %d (CL=%d)", runID, attempt, contentLen)
+				return body, buffered, cr, nil
+			} else if perr == io.EOF {
+				body.Close()
+				lastErr = fmt.Errorf("download returned 0 bytes for backup %q (Zerops reported size %d; the backup may not be ready yet)", backup.Name, backup.Size)
+				p.logf("run %d: empty download on attempt %d/%d", runID, attempt, maxAttempts)
+			} else {
+				body.Close()
+				return nil, nil, nil, fmt.Errorf("download read failed: %w", perr)
+			}
+		}
+
+		if attempt < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return nil, nil, nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
+		}
+	}
+	return nil, nil, nil, lastErr
 }
 
 // buildStore decrypts a target's credentials and returns a ready S3 store.

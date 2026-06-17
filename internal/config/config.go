@@ -19,6 +19,9 @@ type Config struct {
 	Port string
 	// ZeropsAPI is the base URL of the Zerops public REST API.
 	ZeropsAPI string
+	// ZeropsAuthScheme is the Authorization scheme used for Zerops API calls
+	// ("Bearer" by default; "none"/"raw"/"" sends the token with no prefix).
+	ZeropsAuthScheme string
 	// Workers is the number of concurrent export workers.
 	Workers int
 	// SecureCookies marks the session cookie as Secure (HTTPS only).
@@ -34,11 +37,12 @@ type Config struct {
 // validating required values.
 func Load() (*Config, error) {
 	c := &Config{
-		DatabaseURL:   firstNonEmpty(os.Getenv("DATABASE_URL"), os.Getenv("DB_URL")),
-		Port:          getEnv("PORT", "8080"),
-		ZeropsAPI:     strings.TrimRight(getEnv("ZEROPS_API", "https://api.app-prg1.zerops.io/api/rest/public"), "/"),
-		AdminEmail:    strings.TrimSpace(os.Getenv("ADMIN_EMAIL")),
-		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+		DatabaseURL:      firstNonEmpty(os.Getenv("DATABASE_URL"), os.Getenv("DB_URL")),
+		Port:             getEnv("PORT", "8080"),
+		ZeropsAPI:        strings.TrimRight(getEnv("ZEROPS_API", "https://api.app-prg1.zerops.io/api/rest/public"), "/"),
+		ZeropsAuthScheme: getEnv("ZEROPS_AUTH_SCHEME", "Bearer"),
+		AdminEmail:       strings.TrimSpace(os.Getenv("ADMIN_EMAIL")),
+		AdminPassword:    os.Getenv("ADMIN_PASSWORD"),
 	}
 
 	if c.DatabaseURL == "" {

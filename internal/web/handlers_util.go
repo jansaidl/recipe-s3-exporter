@@ -26,7 +26,7 @@ func (s *Server) zeropsClientFor(ctx context.Context, tokenID int64) (*zerops.Cl
 	if err != nil {
 		return nil, err
 	}
-	return zerops.New(s.cfg.ZeropsAPI, plain), nil
+	return zerops.New(s.cfg.ZeropsAPI, plain, s.cfg.ZeropsAuthScheme), nil
 }
 
 // storeForTarget loads and decrypts the target, returning a ready S3 store.

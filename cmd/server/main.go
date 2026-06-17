@@ -74,7 +74,7 @@ func run() error {
 	}
 
 	// Worker pool.
-	pool := worker.NewPool(store, cipher, cfg.ZeropsAPI, cfg.Workers)
+	pool := worker.NewPool(store, cipher, cfg.ZeropsAPI, cfg.ZeropsAuthScheme, cfg.Workers)
 	pool.Start(rootCtx, cfg.Workers)
 
 	// Scheduler.

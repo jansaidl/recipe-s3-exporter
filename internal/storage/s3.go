@@ -96,14 +96,23 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 	return false, err
 }
 
-// Upload streams reader (of the given size) to key. Pass size = -1 if unknown.
+// uploadPartSize bounds memory per concurrent upload when the object size is
+// unknown (streaming multipart). 16 MiB parts allow objects up to ~160 GiB.
+const uploadPartSize = 16 * 1024 * 1024
+
+// Upload streams reader (of the given size) to key. Pass size = -1 if unknown;
+// in that case a bounded-memory streaming multipart upload is used.
 func (s *Store) Upload(ctx context.Context, key string, reader io.Reader, size int64, contentType string) error {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	_, err := s.client.PutObject(ctx, s.bucket, key, reader, size, minio.PutObjectOptions{
-		ContentType: contentType,
-	})
+	opts := minio.PutObjectOptions{ContentType: contentType}
+	if size < 0 {
+		// Cap the part size so unknown-length streams don't allocate the
+		// minio-go default (~512 MiB) per part.
+		opts.PartSize = uploadPartSize
+	}
+	_, err := s.client.PutObject(ctx, s.bucket, key, reader, size, opts)
 	return err
 }
 
