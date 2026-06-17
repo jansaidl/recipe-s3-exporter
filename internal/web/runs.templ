@@ -1,0 +1,27 @@
+package web
+
+import "recipe-s3-exporter/internal/models"
+
+type RunsVM struct {
+	User   *models.User
+	Flash  string
+	Active []models.ExportRun
+	Recent []models.ExportRun
+}
+
+templ RunsPage(vm RunsVM) {
+	@Layout("Runs", vm.User, vm.Flash) {
+		@pageHeader("Export Runs") {
+		}
+		<div class="mb-6">
+			<h2 class="mb-3 text-lg font-semibold text-slate-900">Running now</h2>
+			@card() {
+				@ActiveRuns(vm.Active)
+			}
+		</div>
+		<h2 class="mb-3 text-lg font-semibold text-slate-900">History</h2>
+		@card() {
+			@runsTable(vm.Recent)
+		}
+	}
+}

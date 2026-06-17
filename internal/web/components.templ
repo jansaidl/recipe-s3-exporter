@@ -1,0 +1,15 @@
+package web
+
+// postButton renders a small form that POSTs to action with the given label.
+templ postButton(action, label, classes string) {
+	<form method="post" action={ templ.SafeURL(action) }>
+		<button class={ "rounded-md border px-3 py-1 text-xs", classes }>{ label }</button>
+	</form>
+}
+
+// deleteButton renders a destructive POST form guarded by a JS confirm.
+templ deleteButton(action string) {
+	<form method="post" action={ templ.SafeURL(action) } onsubmit="return confirm('Delete this item? This cannot be undone.');">
+		<button class="rounded-md border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50">Delete</button>
+	</form>
+}

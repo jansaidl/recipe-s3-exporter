@@ -1,0 +1,73 @@
+package web
+
+import (
+	"recipe-s3-exporter/internal/models"
+	"recipe-s3-exporter/internal/storage"
+)
+
+type ExploreVM struct {
+	User     *models.User
+	Flash    string
+	Targets  []models.ExportTarget
+	Selected int64
+	Objects  []storage.Object
+	ListErr  string
+}
+
+templ ExplorePage(vm ExploreVM) {
+	@Layout("Explore", vm.User, vm.Flash) {
+		@pageHeader("Explore Exported Backups") {
+		}
+		@card() {
+			<form method="get" action="/explore" class="mb-4 flex items-end gap-3">
+				<div>
+					<label class="mb-1 block text-xs font-medium text-slate-600">Target</label>
+					<select name="target_id" onchange="this.form.submit()"
+						class="rounded-md border border-slate-300 px-3 py-2 text-sm">
+						<option value="">— choose target —</option>
+						for _, t := range vm.Targets {
+							if t.ID == vm.Selected {
+								<option value={ formatID("%d", t.ID) } selected>{ t.Name } ({ t.Bucket })</option>
+							} else {
+								<option value={ formatID("%d", t.ID) }>{ t.Name } ({ t.Bucket })</option>
+							}
+						}
+					</select>
+				</div>
+			</form>
+
+			if vm.ListErr != "" {
+				<div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{ vm.ListErr }</div>
+			} else if vm.Selected == 0 {
+				<p class="text-sm text-slate-500">Select a target to browse its exported objects.</p>
+			} else {
+				<table class="w-full text-sm">
+					<thead>
+						<tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+							<th class="py-2 pr-4">Object</th>
+							<th class="py-2 pr-4">Size</th>
+							<th class="py-2 pr-4">Last modified</th>
+							<th class="py-2"></th>
+						</tr>
+					</thead>
+					<tbody>
+						if len(vm.Objects) == 0 {
+							<tr><td colspan="4" class="py-4 text-slate-500">No exported objects under this target's prefix.</td></tr>
+						}
+						for _, o := range vm.Objects {
+							<tr class="border-b border-slate-100">
+								<td class="py-2 pr-4 font-mono text-xs">{ o.Key }</td>
+								<td class="py-2 pr-4">{ humanBytes(o.Size) }</td>
+								<td class="py-2 pr-4 text-xs text-slate-500">{ fmtTime(o.LastModified) }</td>
+								<td class="py-2 text-right">
+									<a href={ templ.SafeURL(downloadHref(vm.Selected, o.Key)) }
+										class="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Download</a>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		}
+	}
+}

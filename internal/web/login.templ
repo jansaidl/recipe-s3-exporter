@@ -1,0 +1,40 @@
+package web
+
+templ LoginPage(errMsg string) {
+	<!DOCTYPE html>
+	<html lang="en" class="h-full bg-slate-100">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Login · Zerops S3 Exporter</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+		</head>
+		<body class="flex h-full items-center justify-center">
+			<div class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+				<h1 class="mb-1 text-xl font-semibold text-slate-900">☁︎ S3 Exporter</h1>
+				<p class="mb-6 text-sm text-slate-500">Sign in to manage backup exports.</p>
+				if errMsg != "" {
+					<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+						{ errMsg }
+					</div>
+				}
+				<form method="post" action="/login" class="space-y-4">
+					<div>
+						<label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
+						<input type="email" name="email" required autofocus
+							class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"/>
+					</div>
+					<div>
+						<label class="mb-1 block text-sm font-medium text-slate-700">Password</label>
+						<input type="password" name="password" required
+							class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"/>
+					</div>
+					<button type="submit"
+						class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+						Sign in
+					</button>
+				</form>
+			</div>
+		</body>
+	</html>
+}

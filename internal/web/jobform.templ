@@ -1,0 +1,204 @@
+package web
+
+import (
+	"recipe-s3-exporter/internal/models"
+	"recipe-s3-exporter/internal/zerops"
+)
+
+type JobFormVM struct {
+	User    *models.User
+	Flash   string
+	Tokens  []models.ZeropsToken
+	Targets []models.ExportTarget
+	Job     *models.ExportJob // nil for create
+	Err     string
+}
+
+templ NewJobPage(vm JobFormVM) {
+	@Layout("New Export Job", vm.User, vm.Flash) {
+		@pageHeader("New Export Job") {
+		}
+		@card() {
+			if vm.Err != "" {
+				<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{ vm.Err }</div>
+			}
+			<form method="post" action="/jobs" class="space-y-5">
+				<div>
+					<label class="mb-1 block text-sm font-medium text-slate-700">Job name</label>
+					<input name="name" required placeholder="nightly postgres export"
+						class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"/>
+				</div>
+
+				<div>
+					<label class="mb-1 block text-sm font-medium text-slate-700">Zerops token</label>
+					<select name="zerops_token_id" required
+						hx-get="/partials/projects" hx-target="#project-field" hx-swap="innerHTML"
+						hx-trigger="change" hx-include="this"
+						class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+						<option value="">— choose token —</option>
+						for _, t := range vm.Tokens {
+							<option value={ formatID("%d", t.ID) }>{ t.Name }</option>
+						}
+					</select>
+				</div>
+
+				<div id="project-field">
+					@labelPlaceholder("Project", "Choose a token first")
+				</div>
+
+				<div id="service-field">
+					@labelPlaceholder("Service", "Choose a project first")
+				</div>
+
+				<div id="tags-field">
+					@labelPlaceholder("Backup tag filter", "Choose a service first")
+				</div>
+
+				<div>
+					<label class="mb-1 block text-sm font-medium text-slate-700">Export target</label>
+					<select name="target_id" required class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+						<option value="">— choose target —</option>
+						for _, t := range vm.Targets {
+							<option value={ formatID("%d", t.ID) }>{ t.Name } ({ t.Bucket })</option>
+						}
+					</select>
+				</div>
+
+				@scheduleField("")
+
+				<label class="flex items-center gap-2 text-sm text-slate-700">
+					<input type="checkbox" name="enabled" value="1" checked/> Enabled
+				</label>
+
+				<div class="flex gap-2">
+					<button class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create job</button>
+					<a href="/jobs" class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Cancel</a>
+				</div>
+			</form>
+		}
+	}
+}
+
+templ EditJobPage(vm JobFormVM) {
+	@Layout("Edit Export Job", vm.User, vm.Flash) {
+		@pageHeader("Edit Export Job") {
+		}
+		@card() {
+			if vm.Err != "" {
+				<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{ vm.Err }</div>
+			}
+			<form method="post" action={ templ.SafeURL(formatID("/jobs/%d", vm.Job.ID)) } class="space-y-5">
+				<div>
+					<label class="mb-1 block text-sm font-medium text-slate-700">Job name</label>
+					<input name="name" required value={ vm.Job.Name } class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"/>
+				</div>
+				<div class="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
+					<div>Service: <span class="font-medium">{ orDash(vm.Job.ServiceName) }</span> <span class="text-slate-400">({ orDash(vm.Job.ProjectName) })</span></div>
+					<div class="font-mono text-xs">{ vm.Job.ServiceStackID }</div>
+				</div>
+				<div>
+					<label class="mb-1 block text-sm font-medium text-slate-700">Tag filter (comma-separated; empty = latest of any)</label>
+					<input name="tags" value={ joinTagsRaw(vm.Job.TagFilter) } placeholder="daily, weekly"
+						class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"/>
+				</div>
+				<div>
+					<label class="mb-1 block text-sm font-medium text-slate-700">Export target</label>
+					<select name="target_id" required class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+						for _, t := range vm.Targets {
+							if t.ID == vm.Job.TargetID {
+								<option value={ formatID("%d", t.ID) } selected>{ t.Name } ({ t.Bucket })</option>
+							} else {
+								<option value={ formatID("%d", t.ID) }>{ t.Name } ({ t.Bucket })</option>
+							}
+						}
+					</select>
+				</div>
+				@scheduleField(vm.Job.ScheduleCron)
+				<label class="flex items-center gap-2 text-sm text-slate-700">
+					if vm.Job.Enabled {
+						<input type="checkbox" name="enabled" value="1" checked/> Enabled
+					} else {
+						<input type="checkbox" name="enabled" value="1"/> Enabled
+					}
+				</label>
+				<div class="flex gap-2">
+					<button class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save</button>
+					<a href="/jobs" class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Cancel</a>
+				</div>
+			</form>
+		}
+	}
+}
+
+templ scheduleField(current string) {
+	<div>
+		<label class="mb-1 block text-sm font-medium text-slate-700">Schedule (cron, 5 fields)</label>
+		<input id="cron" name="schedule_cron" value={ current } placeholder="0 3 * * *  (daily at 03:00)"
+			class="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"/>
+		<div class="mt-2 flex flex-wrap gap-2 text-xs">
+			@cronPreset("Hourly", "0 * * * *")
+			@cronPreset("Daily 03:00", "0 3 * * *")
+			@cronPreset("Weekly Sun 03:00", "0 3 * * 0")
+			@cronPreset("Monthly 1st", "0 3 1 * *")
+		</div>
+		<p class="mt-1 text-xs text-slate-400">Leave empty to disable automatic scheduling (still runnable manually).</p>
+	</div>
+}
+
+templ cronPreset(label, spec string) {
+	<button type="button" onclick={ setCron(spec) }
+		class="rounded border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-100">{ label }</button>
+}
+
+script setCron(spec string) {
+	document.getElementById('cron').value = spec;
+}
+
+templ labelPlaceholder(label, hint string) {
+	<label class="mb-1 block text-sm font-medium text-slate-700">{ label }</label>
+	<div class="rounded-md border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-400">{ hint }</div>
+}
+
+// ---- cascade partials (returned by /partials/* endpoints) ----
+
+templ ProjectSelect(projects []zerops.Project) {
+	<label class="mb-1 block text-sm font-medium text-slate-700">Project</label>
+	<select name="project_id" required
+		hx-get="/partials/services" hx-target="#service-field" hx-swap="innerHTML"
+		hx-trigger="change" hx-include="[name='zerops_token_id'],[name='project_id']"
+		class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+		<option value="">— choose project —</option>
+		for _, p := range projects {
+			<option value={ p.ID }>{ p.Name }</option>
+		}
+	</select>
+}
+
+templ ServiceSelect(services []zerops.Service) {
+	<label class="mb-1 block text-sm font-medium text-slate-700">Service</label>
+	<select name="service_stack_id" required
+		hx-get="/partials/backup-tags" hx-target="#tags-field" hx-swap="innerHTML"
+		hx-trigger="change" hx-include="[name='zerops_token_id'],[name='service_stack_id']"
+		class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+		<option value="">— choose service —</option>
+		for _, s := range services {
+			<option value={ s.ID }>{ s.Name } ({ orDash(s.TypeName) })</option>
+		}
+	</select>
+}
+
+templ TagPicker(tags []string) {
+	<label class="mb-1 block text-sm font-medium text-slate-700">Backup tag filter</label>
+	if len(tags) == 0 {
+		<p class="text-sm text-slate-400">No tags found on this service's backups. The latest backup will be exported.</p>
+	} else {
+		<p class="mb-2 text-xs text-slate-500">Export the latest backup carrying ALL selected tags. Select none to export the latest backup of any kind.</p>
+		<div class="flex flex-wrap gap-3">
+			for _, tag := range tags {
+				<label class="flex items-center gap-2 rounded border border-slate-300 px-3 py-1.5 text-sm">
+					<input type="checkbox" name="tags" value={ tag }/> { tag }
+				</label>
+			}
+		</div>
+	}
+}

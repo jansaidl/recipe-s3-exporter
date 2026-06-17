@@ -1,0 +1,48 @@
+package web
+
+import (
+	"fmt"
+	"recipe-s3-exporter/internal/models"
+)
+
+type DashboardVM struct {
+	User       *models.User
+	Flash      string
+	Jobs       int
+	Targets    int
+	Tokens     int
+	ActiveRuns []models.ExportRun
+	Recent     []models.ExportRun
+}
+
+templ Dashboard(vm DashboardVM) {
+	@Layout("Dashboard", vm.User, vm.Flash) {
+		@pageHeader("Dashboard") {
+			<a href="/jobs" class="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Manage jobs</a>
+		}
+		<div class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
+			@statCard("Export jobs", vm.Jobs, "/jobs")
+			@statCard("Targets", vm.Targets, "/targets")
+			@statCard("Tokens", vm.Tokens, "/tokens")
+		</div>
+		<div class="mb-6">
+			<h2 class="mb-3 text-lg font-semibold text-slate-900">Running now</h2>
+			@card() {
+				@ActiveRuns(vm.ActiveRuns)
+			}
+		</div>
+		<div>
+			<h2 class="mb-3 text-lg font-semibold text-slate-900">Recent runs</h2>
+			@card() {
+				@runsTable(vm.Recent)
+			}
+		</div>
+	}
+}
+
+templ statCard(label string, value int, href string) {
+	<a href={ templ.SafeURL(href) } class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-blue-300">
+		<div class="text-3xl font-semibold text-slate-900">{ fmt.Sprintf("%d", value) }</div>
+		<div class="mt-1 text-sm text-slate-500">{ label }</div>
+	</a>
+}

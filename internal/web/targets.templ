@@ -1,0 +1,86 @@
+package web
+
+import "recipe-s3-exporter/internal/models"
+
+type TargetsVM struct {
+	User    *models.User
+	Flash   string
+	Targets []models.ExportTarget
+}
+
+templ TargetsPage(vm TargetsVM) {
+	@Layout("Export Targets", vm.User, vm.Flash) {
+		@pageHeader("S3 Export Targets") {
+		}
+		<div class="grid gap-6 lg:grid-cols-2">
+			<div>
+				@card() {
+					<table class="w-full text-sm">
+						<thead>
+							<tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+								<th class="py-2 pr-4">Name</th>
+								<th class="py-2 pr-4">Bucket</th>
+								<th class="py-2 pr-4">Endpoint</th>
+								<th class="py-2"></th>
+							</tr>
+						</thead>
+						<tbody>
+							if len(vm.Targets) == 0 {
+								<tr><td colspan="4" class="py-4 text-slate-500">No targets yet.</td></tr>
+							}
+							for _, t := range vm.Targets {
+								<tr class="border-b border-slate-100">
+									<td class="py-2 pr-4 font-medium">{ t.Name }</td>
+									<td class="py-2 pr-4 font-mono text-xs">{ t.Bucket }/{ t.Prefix }</td>
+									<td class="py-2 pr-4 font-mono text-xs">{ orDash(t.Endpoint) }</td>
+									<td class="py-2">
+										<div class="flex justify-end gap-2">
+											@postButton(formatID("/targets/%d/test", t.ID), "Test", "border-slate-300 text-slate-700 hover:bg-slate-100")
+											@deleteButton(formatID("/targets/%d/delete", t.ID))
+										</div>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+			<div>
+				@card() {
+					<h2 class="mb-3 text-sm font-semibold text-slate-900">Add S3 target</h2>
+					<form method="post" action="/targets" class="grid grid-cols-2 gap-3">
+						@field("Name", "name", "text", "backup bucket", true, "col-span-2")
+						@field("Endpoint", "endpoint", "text", "s3.eu-central-1.amazonaws.com", true, "col-span-2")
+						@field("Region", "region", "text", "us-east-1", false, "")
+						@field("Bucket", "bucket", "text", "my-backups", true, "")
+						@field("Prefix", "prefix", "text", "zerops-backups", false, "col-span-2")
+						@field("Access key", "access_key", "text", "", true, "")
+						@field("Secret key", "secret_key", "password", "", true, "")
+						<label class="col-span-2 flex items-center gap-2 text-sm text-slate-700">
+							<input type="checkbox" name="use_ssl" value="1" checked/> Use TLS (HTTPS)
+						</label>
+						<label class="col-span-2 flex items-center gap-2 text-sm text-slate-700">
+							<input type="checkbox" name="use_path_style" value="1" checked/> Path-style addressing (MinIO / most S3-compatible)
+						</label>
+						<button class="col-span-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add &amp; test</button>
+					</form>
+					<p class="mt-2 text-xs text-slate-400">Credentials are stored encrypted with the master key.</p>
+				}
+			</div>
+		</div>
+	}
+}
+
+// field is a labelled input used in forms.
+templ field(label, name, inputType, placeholder string, required bool, span string) {
+	<div class={ span }>
+		<label class="mb-1 block text-xs font-medium text-slate-600">{ label }</label>
+		if required {
+			<input name={ name } type={ inputType } placeholder={ placeholder } required
+				class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"/>
+		} else {
+			<input name={ name } type={ inputType } placeholder={ placeholder }
+				class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"/>
+		}
+	</div>
+}

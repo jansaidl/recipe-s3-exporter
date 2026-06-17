@@ -1,0 +1,89 @@
+package web
+
+import (
+	"fmt"
+	"recipe-s3-exporter/internal/models"
+)
+
+// ActiveRuns is a self-refreshing panel showing in-flight exports. It re-polls
+// itself every 2 seconds via HTMX (outerHTML swap preserves the trigger).
+templ ActiveRuns(runs []models.ExportRun) {
+	<div id="active-runs" hx-get="/partials/active-runs" hx-trigger="every 2s" hx-swap="outerHTML">
+		if len(runs) == 0 {
+			<p class="text-sm text-slate-500">No exports are currently running.</p>
+		} else {
+			<div class="space-y-4">
+				for _, r := range runs {
+					@runProgress(r)
+				}
+			</div>
+		}
+	</div>
+}
+
+templ runProgress(r models.ExportRun) {
+	<div class="rounded-lg border border-slate-200 p-4">
+		<div class="mb-2 flex items-center justify-between text-sm">
+			<div>
+				<span class="font-medium text-slate-900">{ orDash(r.JobName) }</span>
+				<span class="ml-2 text-slate-500">{ r.BackupName }</span>
+			</div>
+			<span class={ "rounded px-2 py-0.5 text-xs font-medium", statusClass(r.Status) }>{ string(r.Status) }</span>
+		</div>
+		<div class="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+			<div class="h-2 rounded-full bg-blue-600 transition-all" style={ fmt.Sprintf("width: %d%%", r.Progress()) }></div>
+		</div>
+		<div class="mt-1 flex justify-between text-xs text-slate-500">
+			<span>{ humanBytes(r.BytesTransferred) } / { humanBytes(r.BackupSize) }</span>
+			<span>{ fmt.Sprintf("%d%%", r.Progress()) }</span>
+		</div>
+	</div>
+}
+
+// runsTable renders run history rows.
+templ runsTable(runs []models.ExportRun) {
+	<table class="w-full text-sm">
+		<thead>
+			<tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+				<th class="py-2 pr-4">Job</th>
+				<th class="py-2 pr-4">Backup</th>
+				<th class="py-2 pr-4">Status</th>
+				<th class="py-2 pr-4">Size</th>
+				<th class="py-2 pr-4">Started</th>
+				<th class="py-2 pr-4">Finished</th>
+				<th class="py-2">Detail</th>
+			</tr>
+		</thead>
+		<tbody>
+			if len(runs) == 0 {
+				<tr><td colspan="7" class="py-4 text-slate-500">No runs yet.</td></tr>
+			}
+			for _, r := range runs {
+				<tr class="border-b border-slate-100">
+					<td class="py-2 pr-4">{ orDash(r.JobName) }</td>
+					<td class="py-2 pr-4 font-mono text-xs">{ orDash(r.BackupName) }</td>
+					<td class="py-2 pr-4"><span class={ "rounded px-2 py-0.5 text-xs font-medium", statusClass(r.Status) }>{ string(r.Status) }</span></td>
+					<td class="py-2 pr-4">{ humanBytes(r.BackupSize) }</td>
+					<td class="py-2 pr-4 text-xs text-slate-500">{ fmtTime(r.StartedAt) }</td>
+					<td class="py-2 pr-4 text-xs text-slate-500">{ fmtTimePtr(r.FinishedAt) }</td>
+					<td class="py-2 text-xs text-slate-500">
+						if r.Error != "" {
+							<span class="text-red-600">{ r.Error }</span>
+						} else if r.S3Key != "" {
+							<span class="font-mono">{ r.S3Key }</span>
+						} else {
+							—
+						}
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
+}

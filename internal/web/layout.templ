@@ -1,0 +1,78 @@
+package web
+
+import "recipe-s3-exporter/internal/models"
+
+templ Layout(title string, user *models.User, flash string) {
+	<!DOCTYPE html>
+	<html lang="en" class="h-full bg-slate-50">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · Zerops S3 Exporter</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+			<script src="/static/js/htmx.min.js"></script>
+		</head>
+		<body class="h-full text-slate-800">
+			if user != nil {
+				@nav(user)
+			}
+			<main class="mx-auto max-w-6xl px-4 py-8">
+				if flash != "" {
+					<div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+						{ flash }
+					</div>
+				}
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+templ nav(user *models.User) {
+	<header class="border-b border-slate-200 bg-white">
+		<div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+			<div class="flex items-center gap-6">
+				<a href="/" class="font-semibold text-slate-900">☁︎ S3 Exporter</a>
+				<nav class="hidden gap-4 text-sm md:flex">
+					@navLink("/", "Dashboard")
+					@navLink("/jobs", "Jobs")
+					@navLink("/runs", "Runs")
+					@navLink("/explore", "Explore")
+					if user.IsAdmin() {
+						@navLink("/tokens", "Tokens")
+						@navLink("/targets", "Targets")
+						@navLink("/users", "Users")
+					}
+				</nav>
+			</div>
+			<div class="flex items-center gap-3 text-sm">
+				<span class="text-slate-500">{ user.Email }</span>
+				<span class="rounded bg-slate-100 px-2 py-0.5 text-xs uppercase text-slate-600">{ string(user.Role) }</span>
+				<form method="post" action="/logout">
+					<button class="rounded-md border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-100">Logout</button>
+				</form>
+			</div>
+		</div>
+	</header>
+}
+
+templ navLink(href, label string) {
+	<a href={ templ.SafeURL(href) } class="text-slate-600 hover:text-slate-900">{ label }</a>
+}
+
+// pageHeader renders a title row with an optional action area.
+templ pageHeader(title string) {
+	<div class="mb-6 flex items-center justify-between">
+		<h1 class="text-2xl font-semibold text-slate-900">{ title }</h1>
+		<div class="flex gap-2">
+			{ children... }
+		</div>
+	</div>
+}
+
+// card is a simple white panel.
+templ card() {
+	<div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+		{ children... }
+	</div>
+}

@@ -1,0 +1,29 @@
+# Build & run configuration for the Zerops "app" service.
+# See https://docs.zerops.io/zerops-yaml/specification
+zerops:
+  - setup: app
+    build:
+      base: go@1
+      # Build the templ templates, the Tailwind stylesheet, and the binary.
+      prepareCommands:
+        - go install github.com/a-h/templ/cmd/templ@latest
+        - curl -fsSL https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64 -o /usr/local/bin/tailwindcss && chmod +x /usr/local/bin/tailwindcss
+      buildCommands:
+        - templ generate
+        - tailwindcss -c tailwind.config.js -i internal/web/static/css/input.css -o internal/web/static/css/app.css --minify
+        - go build -o app ./cmd/server
+      deployFiles:
+        - app
+      cache:
+        - /go/pkg/mod
+        - .cache
+    run:
+      base: alpine@3.20
+      ports:
+        - port: 8080
+          httpSupport: true
+      envVariables:
+        PORT: "8080"
+        # PostgreSQL connection (internal, no TLS on port 5432).
+        DATABASE_URL: postgresql://${db_user}:${db_password}@${db_hostname}:5432/${db_dbName}?sslmode=disable
+      start: ./app

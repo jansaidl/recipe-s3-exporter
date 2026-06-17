@@ -1,0 +1,69 @@
+package web
+
+import "recipe-s3-exporter/internal/models"
+
+type TokensVM struct {
+	User   *models.User
+	Flash  string
+	Tokens []models.ZeropsToken
+}
+
+templ TokensPage(vm TokensVM) {
+	@Layout("Zerops Tokens", vm.User, vm.Flash) {
+		@pageHeader("Zerops Integration Tokens") {
+		}
+		<div class="grid gap-6 md:grid-cols-3">
+			<div class="md:col-span-2">
+				@card() {
+					<table class="w-full text-sm">
+						<thead>
+							<tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+								<th class="py-2 pr-4">Name</th>
+								<th class="py-2 pr-4">Client ID</th>
+								<th class="py-2 pr-4">Last validated</th>
+								<th class="py-2"></th>
+							</tr>
+						</thead>
+						<tbody>
+							if len(vm.Tokens) == 0 {
+								<tr><td colspan="4" class="py-4 text-slate-500">No tokens yet. Add one to start.</td></tr>
+							}
+							for _, t := range vm.Tokens {
+								<tr class="border-b border-slate-100">
+									<td class="py-2 pr-4 font-medium">{ t.Name }</td>
+									<td class="py-2 pr-4 font-mono text-xs">{ orDash(t.ClientID) }</td>
+									<td class="py-2 pr-4 text-xs text-slate-500">{ fmtTimePtr(t.LastValidatedAt) }</td>
+									<td class="py-2">
+										<div class="flex justify-end gap-2">
+											@postButton(formatID("/tokens/%d/validate", t.ID), "Validate", "border-slate-300 text-slate-700 hover:bg-slate-100")
+											@deleteButton(formatID("/tokens/%d/delete", t.ID))
+										</div>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+			<div>
+				@card() {
+					<h2 class="mb-3 text-sm font-semibold text-slate-900">Add token</h2>
+					<form method="post" action="/tokens" class="space-y-3">
+						<div>
+							<label class="mb-1 block text-xs font-medium text-slate-600">Name</label>
+							<input name="name" required placeholder="prod account"
+								class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"/>
+						</div>
+						<div>
+							<label class="mb-1 block text-xs font-medium text-slate-600">Integration token</label>
+							<textarea name="token" required rows="3" placeholder="Zerops integration / access token"
+								class="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"></textarea>
+							<p class="mt-1 text-xs text-slate-400">Validated against the Zerops API and stored encrypted.</p>
+						</div>
+						<button class="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add &amp; validate</button>
+					</form>
+				}
+			</div>
+		</div>
+	}
+}

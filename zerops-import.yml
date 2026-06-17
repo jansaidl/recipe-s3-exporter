@@ -1,0 +1,42 @@
+#yamlPreprocessor=on
+# Zerops project import recipe.
+#   zerops project import zerops-import.yml
+# See https://docs.zerops.io/references/import
+project:
+  name: s3-exporter
+  description: Dashboard for exporting Zerops service backups to external S3 storage
+  tags:
+    - backup
+    - exporter
+
+services:
+  # The dashboard application (Go). Built from this repository.
+  - hostname: app
+    type: go@1
+    enableSubdomainAccess: true
+    minContainers: 1
+    maxContainers: 1
+    # Point this at your fork/clone to build on import. Alternatively remove
+    # buildFromGit and deploy with `zerops push` after import.
+    buildFromGit: https://github.com/jansaidl/recipe-s3-exporter
+    envSecrets:
+      # 32-character master key used to encrypt all stored secrets at rest.
+      MASTER_KEY: <@generateRandomString(<32>)>
+      # First admin account, created on first boot. Change the email, then read
+      # the generated password from the service's environment variables.
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: <@generateRandomString(<16>)>
+
+  # PostgreSQL database for users, tokens, targets, jobs and run history.
+  - hostname: db
+    type: postgresql@16
+    mode: NON_HA
+
+  # Optional: a Zerops Object Storage bucket you can use as an export target.
+  # After import, create a target in the dashboard using this service's
+  # generated ${storage_apiUrl}, ${storage_accessKeyId}, ${storage_secretAccessKey}
+  # and ${storage_bucketName}.
+  - hostname: storage
+    type: object-storage
+    objectStorageSize: 5
+    objectStoragePolicy: private
